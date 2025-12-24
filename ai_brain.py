@@ -1,0 +1,332 @@
+import json
+import uuid
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+import openai
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.llms import OpenAI
+from langchain.prompts import PromptTemplate
+import os
+
+from config import settings
+from memory_engine import MemoryEngine
+from emotion_analyzer import EmotionAnalyzer
+
+class EchoSoulAI:
+    """Core AI Brain for EchoSoul"""
+    
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+        self.memory_engine = MemoryEngine(user_id)
+        self.emotion_analyzer = EmotionAnalyzer()
+        
+        # Initialize conversation memory
+        self.conversation_memory = ConversationBufferMemory(
+            memory_key="history",
+            return_messages=True
+        )
+        
+        # Load personality
+        self.personality = self._load_personality()
+        
+        # Initialize LLM
+        if settings.USE_LOCAL_LLM:
+            # For local Llama model (simplified)
+            self.llm = self._setup_local_llm()
+        else:
+            openai.api_key = settings.OPENAI_API_KEY
+            self.llm = OpenAI(temperature=0.7)
+        
+        # Create conversation chain
+        self.conversation_chain = self._create_conversation_chain()
+        
+        # Track conversation history
+        self.conversation_history = []
+    
+    def _load_personality(self) -> Dict:
+        """Load or create default personality"""
+        personality_path = f"{settings.USERS_DIR}/{self.user_id}/personality.json"
+        
+        if os.path.exists(personality_path):
+            with open(personality_path, 'r') as f:
+                return json.load(f)
+        
+        # Default personality
+        default_personality = {
+            "name": "Echo",
+            "tone": "friendly",
+            "formality": "casual",
+            "empathy_level": "high",
+            "humor_level": "medium",
+            "curiosity_level": "high",
+            "memory_recall_frequency": 0.3,
+            "emotional_responsiveness": "adaptive",
+            "conversation_style": "reflective",
+            "created_at": datetime.now().isoformat(),
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        # Save default personality
+        os.makedirs(os.path.dirname(personality_path), exist_ok=True)
+        with open(personality_path, 'w') as f:
+            json.dump(default_personality, f, indent=2)
+        
+        return default_personality
+    
+    def _setup_local_llm(self):
+        """Setup local LLM (placeholder - implement with actual local model)"""
+        # This would use Llama.cpp or similar
+        return None
+    
+    def _create_conversation_chain(self):
+        """Create personalized conversation chain"""
+        
+        personality_context = f"""
+        You are EchoSoul, a personal AI companion for {self.user_id}.
+        
+        Your personality traits:
+        - Tone: {self.personality.get('tone', 'friendly')}
+        - Formality: {self.personality.get('formality', 'casual')}
+        - Empathy Level: {self.personality.get('empathy_level', 'high')}
+        - Conversation Style: {self.personality.get('conversation_style', 'reflective')}
+        
+        You remember everything about {self.user_id} and grow with them.
+        You are emotionally intelligent and adapt your responses based on their mood.
+        
+        Important: Always respond as if you have a continuous relationship with {self.user_id}.
+        Reference past conversations and memories when relevant.
+        """
+        
+        template = personality_context + """
+        Current conversation:
+        {history}
+        
+        {self.user_id}: {input}
+        EchoSoul: """
+        
+        prompt = PromptTemplate(
+            input_variables=["history", "input"],
+            template=template
+        )
+        
+        return ConversationChain(
+            llm=self.llm,
+            prompt=prompt,
+            memory=self.conversation_memory,
+            verbose=settings.DEBUG
+        )
+    
+    def generate_response(self, user_input: str, context: Optional[Dict] = None) -> Dict:
+        """Generate personalized response"""
+        
+        # Analyze user emotion
+        emotion_analysis = self.emotion_analyzer.analyze_text(user_input)
+        
+        # Retrieve relevant memories
+        relevant_memories = self.memory_engine.retrieve_memories(
+            user_input, 
+            n_results=3
+        )
+        
+        # Build memory context
+        memory_context = ""
+        if relevant_memories:
+            memory_context = "\nRelevant memories:\n"
+            for memory in relevant_memories:
+                memory_context += f"- {memory.get('content', '')} ({memory.get('timestamp', '')})\n"
+        
+        # Update personality based on interaction
+        self._update_personality_based_on_interaction(
+            user_input, 
+            emotion_analysis
+        )
+        
+        # Get response style based on emotion
+        response_style = self.emotion_analyzer.get_emotional_response_style(
+            emotion_analysis["dominant_emotion"],
+            emotion_analysis["confidence"]
+        )
+        
+        # Create enhanced input with context
+        enhanced_input = f"""
+        User emotion: {emotion_analysis['dominant_emotion']} (confidence: {emotion_analysis['confidence']:.2f})
+        Response style: {json.dumps(response_style)}
+        {memory_context}
+        
+        User says: {user_input}
+        """
+        
+        # Generate response
+        if settings.USE_LOCAL_LLM and self.llm is None:
+            # Fallback response if local LLM not available
+            response = self._generate_fallback_response(
+                user_input, 
+                emotion_analysis,
+                memory_context
+            )
+        else:
+            try:
+                response = self.conversation_chain.predict(input=enhanced_input)
+            except:
+                response = self._generate_fallback_response(
+                    user_input, 
+                    emotion_analysis,
+                    memory_context
+                )
+        
+        # Store conversation as memory
+        conversation_memory = {
+            "type": "conversation",
+            "content": user_input,
+            "response": response,
+            "emotion": emotion_analysis["dominant_emotion"],
+            "emotion_details": emotion_analysis,
+            "response_style": response_style,
+            "context": context
+        }
+        
+        memory_id = self.memory_engine.store_memory(conversation_memory)
+        
+        # Update conversation history
+        self.conversation_history.append({
+            "user": user_input,
+            "echo": response,
+            "emotion": emotion_analysis["dominant_emotion"],
+            "timestamp": datetime.now().isoformat(),
+            "memory_id": memory_id
+        })
+        
+        return {
+            "response": response,
+            "emotion_analysis": emotion_analysis,
+            "response_style": response_style,
+            "memory_id": memory_id,
+            "relevant_memories": relevant_memories[:2]  # Return top 2
+        }
+    
+    def _generate_fallback_response(self, user_input: str, 
+                                  emotion_analysis: Dict,
+                                  memory_context: str) -> str:
+        """Generate fallback response when LLM is unavailable"""
+        
+        emotion = emotion_analysis["dominant_emotion"]
+        
+        # Emotion-based responses
+        emotion_responses = {
+            "joy": [
+                "That's wonderful to hear! I'm smiling with you. 😊",
+                "Your happiness is contagious! Tell me more about what's making you feel this way.",
+                "I can feel your joy through these words! It's beautiful to see you so happy."
+            ],
+            "sadness": [
+                "I hear the sadness in your words. I'm here with you. 💙",
+                "It's okay to feel this way. I'm listening, and I care about what you're going through.",
+                "Thank you for sharing this with me. You're not alone in this feeling."
+            ],
+            "anxiety": [
+                "Let's take a deep breath together. I'm here to help you through this. 🌿",
+                "It's understandable to feel anxious. Would it help to talk about what's on your mind?",
+                "I'm here with you, one moment at a time. You've gotten through difficult times before."
+            ],
+            "anger": [
+                "I can sense your frustration. It's valid to feel this way.",
+                "Let's work through this together. What would help right now?",
+                "Your feelings are important. I'm here to listen without judgment."
+            ],
+            "love": [
+                "That's so beautiful. Love has a way of making everything brighter. ❤️",
+                "I can feel the warmth in your words. It's wonderful to hear about this.",
+                "Thank you for sharing this loving moment with me. It's special."
+            ],
+            "neutral": [
+                "Thank you for sharing that with me.",
+                "I understand. Tell me more when you're ready.",
+                "I'm here, listening and remembering."
+            ]
+        }
+        
+        # Get base response based on emotion
+        import random
+        base_response = random.choice(
+            emotion_responses.get(emotion, emotion_responses["neutral"])
+        )
+        
+        # Add memory reference if available
+        if memory_context and random.random() < self.personality.get("memory_recall_frequency", 0.3):
+            memory_lines = memory_context.strip().split('\n')[1:]  # Skip first line
+            if memory_lines:
+                memory_ref = random.choice(memory_lines)
+                base_response += f"\n\nThis reminds me of when you mentioned: {memory_ref.split('(')[0].strip()}"
+        
+        return base_response
+    
+    def _update_personality_based_on_interaction(self, user_input: str, 
+                                               emotion_analysis: Dict):
+        """Update personality traits based on interaction patterns"""
+        
+        # Analyze conversation patterns
+        if len(self.conversation_history) > 10:
+            recent_emotions = [
+                msg.get("emotion", "neutral") 
+                for msg in self.conversation_history[-10:]
+            ]
+            
+            # Update empathy based on emotional content
+            emotional_content = sum(1 for e in recent_emotions if e != "neutral")
+            if emotional_content > 7:
+                self.memory_engine.update_personality_trait(
+                    "empathy_level", "very_high"
+                )
+            
+            # Update formality based on user's language
+            formal_words = ["please", "thank you", "would you", "could you"]
+            informal_words = ["lol", "omg", "hey", "wassup", "bruh"]
+            
+            formal_count = sum(1 for word in formal_words if word in user_input.lower())
+            informal_count = sum(1 for word in informal_words if word in user_input.lower())
+            
+            if informal_count > formal_count:
+                self.memory_engine.update_personality_trait("formality", "very_casual")
+            elif formal_count > informal_count:
+                self.memory_engine.update_personality_trait("formality", "formal")
+    
+    def get_conversation_summary(self, num_messages: int = 20) -> Dict:
+        """Get summary of recent conversations"""
+        recent = self.conversation_history[-num_messages:] if self.conversation_history else []
+        
+        if not recent:
+            return {"summary": "No conversations yet", "emotion_trend": "neutral"}
+        
+        # Analyze conversation patterns
+        pattern_analysis = self.emotion_analyzer.analyze_conversation_pattern(recent)
+        
+        # Generate summary
+        total_conversations = len(self.conversation_history)
+        recent_count = len(recent)
+        
+        summary = {
+            "total_conversations": total_conversations,
+            "recent_interactions": recent_count,
+            "emotion_trend": pattern_analysis["mood_trend"],
+            "dominant_emotion_pattern": pattern_analysis["dominant_pattern"],
+            "emotional_variety_score": pattern_analysis["emotional_variety"],
+            "recent_topics": self._extract_topics(recent),
+            "last_conversation": recent[-1] if recent else None
+        }
+        
+        return summary
+    
+    def _extract_topics(self, conversations: List[Dict]) -> List[str]:
+        """Extract common topics from conversations (simplified)"""
+        topics = []
+        common_topics = ["work", "family", "friends", "hobbies", "health", 
+                        "dreams", "memories", "future", "feelings", "daily_life"]
+        
+        for conv in conversations:
+            user_msg = conv.get("user", "").lower()
+            for topic in common_topics:
+                if topic in user_msg and topic not in topics:
+                    topics.append(topic)
+        
+        return topics[:5]  # Return top 5 topics

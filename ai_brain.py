@@ -3,10 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import google.generativeai as genai
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
-from langchain.prompts import PromptTemplate
+import google.generativeai as genai
 import os
 
 from config import settings

@@ -11,16 +11,11 @@ class Settings(BaseSettings):
     
     # Google AI Studio (Gemini) Settings
     GOOGLE_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-pro"  # or "gemini-pro-vision" for multimodal
+    GEMINI_MODEL: str = "gemini-pro"
     
-    # Pinecone Settings
-    PINECONE_API_KEY: Optional[str] = None
-    PINECONE_ENVIRONMENT: Optional[str] = "us-west1-gcp"  # or your environment
-    PINECONE_INDEX_NAME: str = "echosoul-memories"
-    
-    # Memory Settings
-    VECTOR_DB_TYPE: str = "pinecone"  # Changed to pinecone
-    USE_GEMINI: bool = True  # Use Gemini instead of local LLM
+    # Memory Settings (using ChromaDB instead of Pinecone)
+    VECTOR_DB_TYPE: str = "chroma"
+    USE_GEMINI: bool = True
     
     # Emotion Model
     EMOTION_MODEL: str = "j-hartmann/emotion-english-distilroberta-base"
@@ -34,8 +29,8 @@ class Settings(BaseSettings):
     # Encryption
     ENCRYPTION_KEY: str = "your-secret-key-here-change-in-production"
     
-    # Embeddings
-    EMBEDDING_MODEL: str = "models/embedding-001"  # Google's embedding model
+    # Embeddings (using local model)
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     
     class Config:
         env_file = ".env"

@@ -1,3 +1,4 @@
+
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings
@@ -8,15 +9,18 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     
-    # AI Settings
-    OPENAI_API_KEY: Optional[str] = None
-    USE_LOCAL_LLM: bool = True  # Use local Llama models
-    LOCAL_LLM_PATH: str = "TheBloke/Llama-2-7B-Chat-GGUF"
+    # Google AI Studio (Gemini) Settings
+    GOOGLE_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-pro"  # or "gemini-pro-vision" for multimodal
+    
+    # Pinecone Settings
+    PINECONE_API_KEY: Optional[str] = None
+    PINECONE_ENVIRONMENT: Optional[str] = "us-west1-gcp"  # or your environment
+    PINECONE_INDEX_NAME: str = "echosoul-memories"
     
     # Memory Settings
-    VECTOR_DB_TYPE: str = "chroma"  # chroma or pinecone
-    PINE_CONE_API_KEY: Optional[str] = None
-    PINE_CONE_ENV: Optional[str] = None
+    VECTOR_DB_TYPE: str = "pinecone"  # Changed to pinecone
+    USE_GEMINI: bool = True  # Use Gemini instead of local LLM
     
     # Emotion Model
     EMOTION_MODEL: str = "j-hartmann/emotion-english-distilroberta-base"
@@ -29,6 +33,9 @@ class Settings(BaseSettings):
     
     # Encryption
     ENCRYPTION_KEY: str = "your-secret-key-here-change-in-production"
+    
+    # Embeddings
+    EMBEDDING_MODEL: str = "models/embedding-001"  # Google's embedding model
     
     class Config:
         env_file = ".env"

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import plotly.graph_objects as go
 from streamlit_chat import message
-import google.generativeai as genai
+import google.genai as genai  # New package
 from typing import Optional
 
 # Add project root to path

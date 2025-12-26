@@ -1,4 +1,3 @@
-
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings
@@ -13,7 +12,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-pro"
     
-    # Memory Settings (using ChromaDB instead of Pinecone)
+    # Memory Settings (using ChromaDB - no Pinecone)
     VECTOR_DB_TYPE: str = "chroma"
     USE_GEMINI: bool = True
     
